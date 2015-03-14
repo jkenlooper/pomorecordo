@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Take a screenshot of the default framebuffer every 25th of a second for
+# Take a screenshot of the default framebuffer every 12th of a second for
 # creating videos.  At the end the individual frames are converted to tiff and
 # then into a movie, wee.
 #
@@ -23,16 +23,27 @@ mkdir ${SGDIR};
 cd ${SGDIR};
 while true; do
   SG=$(($SG+1));
-  #fbgrab -c 1 frame-${SG}.png;
+
   fbgrab -d /dev/fb0 frame-${SG}.png;
-  #sleep 0.025;
-  read -n 1 -t 0.025 && break;
+
+  # Allow for pressing a key to stop taking frames.
+  read -n 1 -t 0.05 && break;
 done;
 echo "Converting ${SG} frames...";
 
+# TODO: remove duplicate adjacent frames or not?
+
+#mogrify -scale 640x480 -format tiff frame-*.png;
+for frame in frame-*.png; do
+    #convert -size 1280x720 canvas:black -gravity West $frame -scale x720 -compose Over -composite $frame;
+    convert -size 1920x1080 canvas:black -gravity West $frame -scale x1080 -compose Over -composite $frame;
+done;
+
 mogrify -format tiff frame-*.png;
 
-# TODO: improve quality here?
-ffmpeg -i frame-%d.tiff -vcodec mpeg4 -r 25 out.mov
+# The bitrate has been set to 5000kbps and also the scale is now 16:9
+
+ffmpeg -i frame-%d.tiff -b:v 10000000 -vcodec mpeg4 -r 12 out.mov;
+
 fi
 )
