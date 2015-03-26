@@ -9,6 +9,7 @@
 #
 # Note. Writing bash scripts that are short like this works, I guess.  Not too
 # much experience doing this, but it seems to work. Just learning as I go.
+FPS=12
 
 # Load the TASK variable with the todo text getting just the first line.
 TASK=`sed -n ''"$1"' L' $HOME/.todo/todo.txt`;
@@ -24,6 +25,7 @@ done;
 if test $CANCELSCREENGRAB; then
 echo 'canceled screen grab';
 else
+
 START=`date +%s`;
 SGDIR=sg-${START};
 mkdir ${SGDIR};
@@ -36,23 +38,30 @@ timer.sh $1 $TIMER &
 TIMER_PID=$!
 END=`date -d "${TIMER} minutes" +%s`
 
-# Start audio recording and put it in the background
-arecord -d $(($TIMER * 60)) -f dat test.wav &
-AUDIO_PID=$!
-
 FRAME_TIMESTAMP=$(date +%s.%N);
 
-# or more direct...
-ffmpeg -f fbdev -r 12 -i /dev/fb0 -b:v 10000000 -vcodec mpeg4 out.mov;
-
-while test $END -ge `date +%s`; do
+frameinterval=$(echo "scale=6; 1/12;" | bc);
+# Record the opening title
+SG=1
+fbgrab -d /dev/fb0 frame-${SG}.png 2> /dev/null &
+now=$(date +%s)
+while test $END -ge $now; do
+  now=$(date +%s)
   SG=$(($SG+1));
 
   FRAME_TIMESTAMP_NOW=$(date +%s.%N);
-  DELAY=$(echo "scale=3; (($FRAME_TIMESTAMP_NOW - $FRAME_TIMESTAMP)/1) - 0.083;" | bc);
+  DELAY=$(echo "scale=3; (($FRAME_TIMESTAMP_NOW - $FRAME_TIMESTAMP)/1) - $frameinterval;" | bc);
   FRAME_TIMESTAMP=$FRAME_TIMESTAMP_NOW
+  previous_frame=frame-$(($SG - 1)).png
+  frame=frame-${SG}.png
 
-  fbgrab -d /dev/fb0 frame-${SG}.png 2> /dev/null &
+  fbgrab -d /dev/fb0 frame-${SG}.png 2> /dev/null
+
+  # Throw out this frame if it's the same as previous ( and adjust $findex )
+  if test $(compare -metric AE ${previous_frame} ${frame} diff.png 2>&1) -eq 0; then
+      rm ${frame};
+      SG=$(($SG - 1));
+  fi
 
 
   # create a canvas here and composite in all available slot images?
@@ -68,29 +77,42 @@ while test $END -ge `date +%s`; do
   # Allow for pressing a key to stop taking frames.
 
   # This is simply done to have something to trigger a stop.
-  timeout=$(echo "0.083 - $DELAY" | bc);
+  timeout=$(echo "$frameinterval - $DELAY" | bc);
   read -n 1 -t $timeout CANCELFBGRAB && break;
+  if test $((($END - $now) % 10)) -eq 0; then
+      tmux display-message -c /dev/tty1 "$(($END - $now))"
+      # Sleep for a second to avoid displaying multiple messages.
+      sleep 1s
+  fi
 done;
 if test $CANCELFBGRAB; then
     echo screen grab canceled.
     kill $TIMER_PID;
-    kill $AUDIO_PID;
     #TODO: cleanup any frame-*.png created?
 else
-STOP=`date +%s`;
-echo "Converting ${SG} frames...";
 
-# TODO: count the frames created and from the duration of the time figure out what the fps is.
-FPS=$((${SG}/(${STOP} - ${START})));
+# signal that recording has now begun.
+tmux display-message -c /dev/tty1 "${TASK}"
+
+# Start audio recording and put it in the background
+arecord -d $(($TIMER * 60)) -f dat out.wav &
+AUDIO_PID=$!
+
+STOP=`date +%s`;
+
+# start recording the main session
+ffmpeg -t $((60 * $TIMER)) -f fbdev -r $FPS -i /dev/fb0 -b:v 10000000 -vcodec mpeg4 out.mov;
+kill $AUDIO_PID
+
+tmux display-message -c /dev/tty1 "Complete..."
+
+echo "Converting ${SG} frames for opening title";
+
+adjusted_fps=$((${SG}/(${STOP} - ${START})));
 echo "START = ${START}";
 echo "STOP = ${STOP}";
 echo "SG = ${SG}";
-echo "fps = ${FPS}";
-
-# Yo, times up.
-#tmux detach-client;
-
-# But, continue
+echo "fps = ${adjusted_fps}";
 
 #convert frames.miff -coalesce -layers OptimizePlus frames.gif;
   #convert frame-${SG}.png frame-${SG}.gif;
@@ -99,11 +121,37 @@ echo "fps = ${FPS}";
   #convert frames.miff -delay $DELAY frame-${SG}.gif frames.miff;
 ##mogrify -format tiff frame-*.png;
 frame_index=0
+GS=$SG
 #echo "convert frames.miff \\" > create_gif.sh;
 #frame-${frame_index}.gif frames.miff;
+last_dim_w=1
+last_dim_h=1
 while test $frame_index -lt $SG; do
     frame_index=$((${frame_index} + 1))
     frame=frame-${frame_index}.png
+    echo "building opening title ${frame} of ${SG}";
+
+    # Crop out the left and bottom edges and then trim what's left
+    mogrify -crop +0-80 +repage -crop +30+0 +repage \
+        -trim +repage -bordercolor black -border 20x20 ${frame};
+
+    frame_w=$(identify -format "%w" ${frame});
+    frame_h=$(identify -format "%h" ${frame});
+    if test $frame_w -gt $last_dim_w; then
+        last_dim_w=$frame_w
+    fi
+    if test $frame_h -gt $last_dim_h; then
+        last_dim_h=$frame_h
+    fi
+    mogrify -background black -gravity center -extent ${last_dim_w}x${last_dim_h} +repage ${frame};
+    mogrify -scale 1024x768 +repage ${frame};
+    convert -size 1024x768 canvas:black \
+        -gravity center $frame -compose Over -composite \
+        f-${GS}.png;
+    rm $frame;
+
+    GS=$((${GS} - 1))
+
     #delay=`sed -n ''"${SG}"' L' delay.txt`;
     #convert frame-${frame_index}.png frame-${frame_index}.gif;
     #echo "-delay ${delay} frame-${frame_index}.gif \\" >> create_gif.sh;
@@ -114,7 +162,6 @@ while test $frame_index -lt $SG; do
     #TODO: use an auto trim and scale from imagemagick.  This is so a 'title' can simply be typed out.
     #convert -size 1280x720 canvas:black -gravity West $frame -scale x720 -compose Over -composite $frame;
     #convert -size 1920x1080 canvas:black -gravity West $frame -scale x1080 -compose Over -composite $frame;
-    #echo "building ${frame} of ${SG}";
     #mogrify -trim -scale 1440x1080 +repage ${frame};
     #convert -size 1920x1080 canvas:black \
     #    -gravity West $frame  -compose Over -composite \
@@ -128,13 +175,7 @@ done;
 #rm frame-*.gif;
 #convert frames.miff -coalesce -layers OptimizePlus frames.gif;
 
-#mogrify -format tiff frame-*.png;
-
-# The bitrate has been set to 10000kbps and also the scale is now 16:9 with a framerate of the computed fps
-
-#ffmpeg -i frame-%d.tiff -b:v 10000000 -vcodec mpeg4 -r 1 out.mov;
-#ffmpeg -i frame-%d.tiff -b:v 10000000 -vcodec mpeg4 -r ${FPS} out.mov;
-ffmpeg -framerate ${FPS} -i frame-%d.png -c:v libx264 -pix_fmt yuv420p -b:v 10000000 -vcodec mpeg4 -r 12 out.mov;
+ffmpeg -framerate 25 -i f-%d.png -c:v libx264 -pix_fmt yuv420p -b:v 10000000 -vcodec mpeg4 -r 25 opening-title.mov;
 
 fi
 fi
