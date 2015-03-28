@@ -1,17 +1,18 @@
 #!/bin/bash
 
 # PomoRecordo.sh
-# Record screen and audio for 25 min and then detach from tmux
+# Record screen and audio for 25 min pomodoro and then display-message to tmux
+# Includes bonus opening-title
 
-# Take a screenshot of the default framebuffer a bunch of times a second for
-# creating videos.  At the end the individual frames are converted to tiff and
-# then into a movie, wee.
-#
-# Note. Writing bash scripts that are short like this works, I guess.  Not too
-# much experience doing this, but it seems to work. Just learning as I go.
+TIMER=25;
+OPENINGTITLE=4;
+FRAMERATE=25;
 FPS=12
 
-# Load the TASK variable with the todo text getting just the first line.
+# set this to the minium amount of time between frames that are the same.
+IDLE=5;
+
+# Load the TASK variable with the todo text
 TASK=`sed -n ''"$1"' L' $HOME/.todo/todo.txt`;
 echo "Starting timer for task: ${TASK}"
 echo "Starting in:";
@@ -31,12 +32,9 @@ SGDIR=sg-${START};
 mkdir ${SGDIR};
 cd ${SGDIR};
 
-
-# Within the timer.sh script the TIMER gets decremented every minute.
-TIMER=1;
 timer.sh $1 $TIMER &
 TIMER_PID=$!
-END=`date -d "${TIMER} minutes" +%s`
+END=`date -d "${OPENINGTITLE} minutes" +%s`
 
 FRAME_TIMESTAMP=$(date +%s.%N);
 
@@ -45,6 +43,8 @@ frameinterval=$(echo "scale=6; 1/12;" | bc);
 SG=1
 fbgrab -d /dev/fb0 frame-${SG}.png 2> /dev/null &
 now=$(date +%s)
+last_frame_date=$now
+last_message_date=$now
 while test $END -ge $now; do
   now=$(date +%s)
   SG=$(($SG+1));
@@ -58,31 +58,25 @@ while test $END -ge $now; do
   fbgrab -d /dev/fb0 frame-${SG}.png 2> /dev/null
 
   # Throw out this frame if it's the same as previous ( and adjust $findex )
-  if test $(compare -metric AE ${previous_frame} ${frame} diff.png 2>&1) -eq 0; then
+  if test $(($now - $last_frame_date)) -lt $IDLE && test $(compare -metric AE ${previous_frame} ${frame} diff.png 2>&1) -eq 0; then
       rm ${frame};
       SG=$(($SG - 1));
+  else
+      # It's been more then $IDLE seconds since the last frame or it was different.
+      # The last_frame_date marks the time each frame has been added.
+      last_frame_date=$now
   fi
 
-
-  # create a canvas here and composite in all available slot images?
-  #convert -size 1920x1080 canvas:black -gravity East -size 480x600 canvas:red  -compose Over -composite test.png;
-  #convert -size 1920x1080 canvas:black \
-  #    -gravity West frame-${SG}.png -scale x1080 -compose Over -composite \
-  #    -gravity NorthEast -size 480x360 canvas:red  -compose Over -composite \
-  #    -gravity East -size 480x360 canvas:green  -compose Over -composite \
-  #    -gravity SouthEast -size 480x360 canvas:blue  -compose Over -composite \
-  #    frame-${SG}.png;
-
-  # 1920 - ((1080 / 768) * 1024) = 480
   # Allow for pressing a key to stop taking frames.
-
   # This is simply done to have something to trigger a stop.
   timeout=$(echo "$frameinterval - $DELAY" | bc);
   read -n 1 -t $timeout CANCELFBGRAB && break;
-  if test $((($END - $now) % 10)) -eq 0; then
-      tmux display-message -c /dev/tty1 "$(($END - $now))"
-      # Sleep for a second to avoid displaying multiple messages.
-      sleep 1s
+
+  # Display time left to tmux session occasionaly
+  if test $(($now - $last_message_date)) -gt 1 && test $((($END - $now) % 60)) -eq 0 || test $(($END - $now)) -lt 10; then
+      tmux display-message -c /dev/tty1 "$(($END - $now)) seconds left"
+      # Update last_message_date to avoid displaying multiple messages.
+      last_message_date=$now
   fi
 done;
 if test $CANCELFBGRAB; then
@@ -90,6 +84,13 @@ if test $CANCELFBGRAB; then
     kill $TIMER_PID;
     #TODO: cleanup any frame-*.png created?
 else
+
+# copy the last frame a bunch so the opening title will show longer.
+# 50 being FRAMERATE * 2 for about 2 seconds
+for i in {1..50}; do
+    cp frame-${SG}.png frame-$(($SG + 1)).png
+    SG=$(($SG+1));
+done;
 
 # signal that recording has now begun.
 tmux display-message -c /dev/tty1 "${TASK}"
@@ -108,22 +109,9 @@ tmux display-message -c /dev/tty1 "Complete..."
 
 echo "Converting ${SG} frames for opening title";
 
-adjusted_fps=$((${SG}/(${STOP} - ${START})));
-echo "START = ${START}";
-echo "STOP = ${STOP}";
-echo "SG = ${SG}";
-echo "fps = ${adjusted_fps}";
 
-#convert frames.miff -coalesce -layers OptimizePlus frames.gif;
-  #convert frame-${SG}.png frame-${SG}.gif;
-  #rm frame-${SG}.png;
-
-  #convert frames.miff -delay $DELAY frame-${SG}.gif frames.miff;
-##mogrify -format tiff frame-*.png;
 frame_index=0
 GS=$SG
-#echo "convert frames.miff \\" > create_gif.sh;
-#frame-${frame_index}.gif frames.miff;
 last_dim_w=1
 last_dim_h=1
 while test $frame_index -lt $SG; do
@@ -143,39 +131,30 @@ while test $frame_index -lt $SG; do
     if test $frame_h -gt $last_dim_h; then
         last_dim_h=$frame_h
     fi
-    mogrify -background black -gravity center -extent ${last_dim_w}x${last_dim_h} +repage ${frame};
+
+    # Add black bg with cropped frame positioned on top
+    # Using default gravity of top left to avoid jumpiness ( as long as the top and left edges remain the same )
+    mogrify -background black -extent ${last_dim_w}x${last_dim_h} +repage ${frame};
+
+    # Make it big ( use -scale as it's better for keeping the pixels crisp )
+    # Also center it within the frame.
     mogrify -scale 1024x768 +repage ${frame};
     convert -size 1024x768 canvas:black \
         -gravity center $frame -compose Over -composite \
         f-${GS}.png;
     rm $frame;
 
+    # And this is how it is reversed
     GS=$((${GS} - 1))
 
-    #delay=`sed -n ''"${SG}"' L' delay.txt`;
-    #convert frame-${frame_index}.png frame-${frame_index}.gif;
-    #echo "-delay ${delay} frame-${frame_index}.gif \\" >> create_gif.sh;
-    #convert frames.miff -delay $delay frame-${frame_index}.gif frames.miff;
-    #rm frame-${frame_index}.png;
-
-    #TODO: add in other screenshots for the other slots.
-    #TODO: use an auto trim and scale from imagemagick.  This is so a 'title' can simply be typed out.
-    #convert -size 1280x720 canvas:black -gravity West $frame -scale x720 -compose Over -composite $frame;
-    #convert -size 1920x1080 canvas:black -gravity West $frame -scale x1080 -compose Over -composite $frame;
-    #mogrify -trim -scale 1440x1080 +repage ${frame};
-    #convert -size 1920x1080 canvas:black \
-    #    -gravity West $frame  -compose Over -composite \
-    #    -gravity NorthEast -size 480x360 canvas:red  -compose Over -composite \
-    #    -gravity East -size 480x360 canvas:green  -compose Over -composite \
-    #    -gravity SouthEast -size 480x360 canvas:blue  -compose Over -composite \
-    #    -compress LZW ${frame/.png/.tiff};
 done;
-#echo "frames.miff" >> create_gif.sh;
-#bash create_gif.sh;
-#rm frame-*.gif;
-#convert frames.miff -coalesce -layers OptimizePlus frames.gif;
 
+# Note that this is effectivley at a fast speed which should result in a short 5~ second opening title mov.
 ffmpeg -framerate 25 -i f-%d.png -c:v libx264 -pix_fmt yuv420p -b:v 10000000 -vcodec mpeg4 -r 25 opening-title.mov;
+
+rm f-*.png;
+
+# TODO: combine the two vidoes and audio using ffmpeg.
 
 fi
 fi
