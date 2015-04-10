@@ -6,7 +6,7 @@
 
 TIMER=25;
 OPENINGTITLE=4;
-FRAMERATE=24;
+FRAMERATE=12;
 FPS=12
 REALTIME=0;
 AUDIO=0;
@@ -90,10 +90,10 @@ else
 # copy the last frame a bunch so the opening title will show longer.
 # 50 being FRAMERATE * 2 for about 2 seconds
 # TODO: could be done a different way by using ffmpeg -concat
-for i in {1..50}; do
-    cp frame-${SG}.png frame-$(($SG + 1)).png
-    SG=$(($SG+1));
-done;
+#for i in {1..50}; do
+#    cp frame-${SG}.png frame-$(($SG + 1)).png
+#    SG=$(($SG+1));
+#done;
 
 # signal that recording has now begun.
 tmux display-message -c /dev/tty1 "${TASK}"
@@ -156,8 +156,8 @@ tmux display-message -c /dev/tty1 "Complete... Take 5. That's a wrap."
 
 screensize=$(identify -format %wx%h m-1.png)
 
-# Create a time lapse of the m-*.png with about 24 fps
-ffmpeg -framerate 24 -i m-%d.png -c:v libx264 -pix_fmt yuv420p -b:v 10000000 -vcodec mpeg4 -r 24 main.mov && \
+# Create a time lapse of the m-*.png with about 12 fps
+ffmpeg -framerate ${FRAMERATE} -i m-%d.png -c:v libx264 -pix_fmt yuv420p -b:v 10000000 -vcodec mpeg4 -r ${FRAMERATE} main.mov && \
     rm m-*.png;
 
 rm m-*.png;
@@ -213,10 +213,11 @@ while test $frame_index -lt $SG; do
 
 done;
 
+cp f-1.png opening-title.png;
+
 # Note that this is effectivley at a fast speed which should result in a short 5~ second opening title mov.
-# TODO: set the input framerate to be adjusted to drop or add frames to keep a set 5 second opening title.
 inputframerate=$((${SG}/5));
-ffmpeg -framerate $inputframerate -i f-%d.png -c:v libx264 -pix_fmt yuv420p -b:v 10000000 -vcodec mpeg4 -r 24 opening-title.mov && \
+ffmpeg -framerate $inputframerate -i f-%d.png -c:v libx264 -pix_fmt yuv420p -b:v 10000000 -vcodec mpeg4 -r ${FRAMERATE} opening-title.mov && \
     rm f-*.png;
 
 # Combine the two vidoes using ffmpeg.
