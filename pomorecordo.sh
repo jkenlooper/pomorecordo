@@ -8,8 +8,11 @@ TIMER=25;
 OPENINGTITLE=4;
 FRAMERATE=12;
 FPS=12
-REALTIME=0;
-AUDIO=0;
+
+#TODO: how to do a continuation?
+REALTIME=1;
+TIMELAPSE=1;
+AUDIO=1;
 
 # set this to the minium amount of time (seconds) between frames that are the same.
 IDLE=5;
@@ -108,12 +111,13 @@ timer.sh $1 $TIMER &
 TIMER_PID=$!
 STOP=`date +%s`;
 
+END=`date -d "$TIMER minutes" +%s`
 # start recording the main session
 if test $REALTIME -eq 1; then
-ffmpeg -t $((60 * $TIMER)) -f fbdev -r $FPS -i /dev/fb0 -b:v 10000000 -vcodec mpeg4 main.mov;
-else
+ffmpeg -t $((60 * $TIMER)) -f fbdev -r $FPS -i /dev/fb0 -b:v 10000000 -vcodec mpeg4 realtime.mov &
+fi
+if test $TIMELAPSE -eq 1; then
 FRAME_TIMESTAMP=$(date +%s.%N);
-END=`date -d "$TIMER minutes" +%s`
 
 frameinterval=$(echo "scale=6; 1/12;" | bc);
 #MainScreenGrab ... not the Mono Sodium Glutamate...
@@ -157,13 +161,22 @@ tmux display-message -c /dev/tty1 "Complete... Take 5. That's a wrap."
 screensize=$(identify -format %wx%h m-1.png)
 
 # Create a time lapse of the m-*.png with about 12 fps
-ffmpeg -framerate ${FRAMERATE} -i m-%d.png -c:v libx264 -pix_fmt yuv420p -b:v 10000000 -vcodec mpeg4 -r ${FRAMERATE} main.mov && \
+ffmpeg -framerate ${FRAMERATE} -i m-%d.png -c:v libx264 -pix_fmt yuv420p -b:v 10000000 -vcodec mpeg4 -r ${FRAMERATE} timelapse.mov && \
     rm m-*.png;
 
 rm m-*.png;
 rm diff.png;
 fi
 
+# Stall while the REALTIME recording might still be going
+now=$(date +%s)
+if test $END -ge $now; then
+echo "waiting every 5 seconds since timer not complete."
+fi
+while test $END -ge $now; do
+  read -n 1 -t 5 -p "." && break
+  now=$(date +%s)
+done;
 
 if test $AUDIO -eq 1; then
 kill $AUDIO_PID
@@ -215,14 +228,24 @@ done;
 
 cp f-1.png opening-title.png;
 
+# Now do an unreverse since the f-*.png have been properly cropped
+# f-*.png -> g-*.png but in reversed index
+frame_index=$SG;
+newframe_index=1;
+while test $frame_index -gt 0; do
+    mv f-${frame_index}.png g-${newframe_index}.png;
+    newframe_index=$((${newframe_index} + 1))
+    frame_index=$((${frame_index} - 1))
+done;
+
 # Note that this is effectivley at a fast speed which should result in a short 5~ second opening title mov.
 inputframerate=$((${SG}/5));
-ffmpeg -framerate $inputframerate -i f-%d.png -c:v libx264 -pix_fmt yuv420p -b:v 10000000 -vcodec mpeg4 -r ${FRAMERATE} opening-title.mov && \
-    rm f-*.png;
+ffmpeg -framerate $inputframerate -i g-%d.png -c:v libx264 -pix_fmt yuv420p -b:v 10000000 -vcodec mpeg4 -r ${FRAMERATE} opening-title.mov && \
+    rm g-*.png;
 
 # Combine the two vidoes using ffmpeg.
-ffmpeg -f concat -i <(for f in $PWD/opening-title.mov $PWD/main.mov; do echo "file '$f'"; done) -c copy out.mov && \
-    rm opening-title.mov main.mov;
+ffmpeg -f concat -i <(for f in $PWD/opening-title.mov $PWD/timelapse.mov; do echo "file '$f'"; done) -c copy opening-and-timelapse.mov && \
+    rm opening-title.mov timelapse.mov;
 
 
 
