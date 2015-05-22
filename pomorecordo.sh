@@ -16,7 +16,7 @@ AUDIO=1;
 
 # set this to the minium amount of time (seconds) between frames that are the same.
 IDLE=5;
-MAIN_IDLE=5;
+MAIN_IDLE=1;
 
 # Load the TASK variable with the todo text
 TASK=`sed -n ''"$1"' L' $HOME/.todo/todo.txt`;
@@ -124,6 +124,8 @@ frameinterval=$(echo "scale=6; 1/12;" | bc);
 MSG=1
 fbgrab -d /dev/fb0 m-${MSG}.png 2> /dev/null &
 now=$(date +%s)
+show_large_diff=$now
+idle=$MAIN_IDLE
 last_frame_date=$now
 last_message_date=$now
 while test $END -ge $now; do
@@ -139,14 +141,27 @@ while test $END -ge $now; do
   fbgrab -d /dev/fb0 m-${MSG}.png 2> /dev/null
 
   # Throw out this frame if it's the same as previous ( and adjust $findex )
-  if test $(($now - $last_frame_date)) -lt $MAIN_IDLE && test $(compare -metric AE ${previous_frame} ${frame} diff.png 2>&1) -eq 0; then
-      rm ${frame};
-      MSG=$(($MSG - 1));
+  if test $(($now - $last_frame_date)) -lt $MAIN_IDLE && \
+      test $(compare -metric AE ${previous_frame} ${frame} -compose Src diff.png 2>&1 | tee diff) -eq 0; then
+      # Only remove the frame if the skipframe flag is set.
+      if test $show_large_diff -lt $now; then
+          rm ${frame};
+          MSG=$(($MSG - 1));
+      fi
   else
       #mogrify -scale 1440x1080 +repage ${frame} &
       # It's been more then $MAIN_IDLE seconds since the last frame or it was different.
       # The last_frame_date marks the time each frame has been added.
       last_frame_date=$now
+
+      #last frame was different
+      if test -f diff.png; then
+          # check the diff.png for the size of the difference and set the skipframe flag
+          if test $(echo "$(convert diff.png -trim -format '%w * %h' info:)" | bc) -gt 248000; then
+              show_large_diff=$(($now+6))
+              rm diff.png;
+          fi
+      fi
   fi
 
   # Allow for pressing a key to stop taking frames.
