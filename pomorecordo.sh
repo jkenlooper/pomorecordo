@@ -186,7 +186,12 @@ while test $END -ge $now; do
 
 done;
 
-tmux display-message -c /dev/tty1 "Complete... Take 5. That's a wrap."
+DONEMSG=5;
+while test $DONEMSG -gt -1; do
+    tmux display-message -c /dev/tty1 "Complete... Take 5. That's a wrap."
+    sleep 1;
+    DONEMSG=$(($DONEMSG-1));
+done;
 
 screensize=$(identify -format %wx%h m-1.png)
 
