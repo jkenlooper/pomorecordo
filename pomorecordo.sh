@@ -3,6 +3,8 @@
 # PomoRecordo.sh
 # Record screen and audio for 25 min pomodoro and display-messages to tmux
 # Includes bonus opening-title creation
+#
+# First arg is the todo line number, Second is optional directory to use.  Will continue if there is an existing vid.
 
 TIMER=25;
 OPENINGTITLE=4;
@@ -13,6 +15,14 @@ FPS=12
 REALTIME=1;
 TIMELAPSE=1;
 AUDIO=1;
+
+CONTINUATION=0;
+# If second arg then this is a continuation if there is an existing vid, otherwise use the directory if it exists
+SGDIR=$2;
+if test "$2" -a -d "$2" -a -f "$2/opening-and-timelapse.mov"; then
+    CONTINUATION=1;
+    echo "Continuing recording in: $2";
+fi
 
 # set this to the minium amount of time (seconds) between frames that are the same.
 IDLE=5;
@@ -34,10 +44,17 @@ if test $CANCELSCREENGRAB; then
 echo 'canceled screen grab';
 else
 
+# Make a new folder in the cwd if no SGDIR has been set
 START=`date +%s`;
+if test ! -n "$SGDIR"; then
 SGDIR=sg-${START};
-mkdir ${SGDIR};
+mkdir -p ${SGDIR};
+fi
+
+echo "Recording in ${SGDIR}";
 cd ${SGDIR};
+
+if test $CONTINUATION -eq 0; then
 
 END=`date -d "${OPENINGTITLE} minutes" +%s`
 
@@ -85,18 +102,11 @@ while test $END -ge $now; do
       last_message_date=$now
   fi
 done;
+fi
 if test $CANCELFBGRAB; then
     echo screen grab canceled.
     #TODO: cleanup any frame-*.png created?
 else
-
-# copy the last frame a bunch so the opening title will show longer.
-# 50 being FRAMERATE * 2 for about 2 seconds
-# TODO: could be done a different way by using ffmpeg -concat
-#for i in {1..50}; do
-#    cp frame-${SG}.png frame-$(($SG + 1)).png
-#    SG=$(($SG+1));
-#done;
 
 # signal that recording has now begun.
 tmux display-message -c /dev/tty1 "${TASK}"
@@ -114,7 +124,12 @@ STOP=`date +%s`;
 END=`date -d "$TIMER minutes" +%s`
 # start recording the main session
 if test $REALTIME -eq 1; then
-ffmpeg -t $((60 * $TIMER)) -f fbdev -r $FPS -i /dev/fb0 -b:v 10000000 -vcodec mpeg4 realtime.mov &
+REALTIME_I=''
+while test -f realtime${REALTIME_I}.mov; do
+    REALTIME_I=$((${REALTIME_I}+1));
+done;
+
+ffmpeg -t $((60 * $TIMER)) -f fbdev -r $FPS -i /dev/fb0 -b:v 10000000 -vcodec mpeg4 realtime${REALTIME_I}.mov &
 fi
 if test $TIMELAPSE -eq 1; then
 FRAME_TIMESTAMP=$(date +%s.%N);
@@ -197,6 +212,7 @@ if test $AUDIO -eq 1; then
 kill $AUDIO_PID
 fi
 
+if test $CONTINUATION -eq 0; then
 
 echo "Converting ${SG} frames for opening title";
 
@@ -258,10 +274,19 @@ inputframerate=$((${SG}/5));
 ffmpeg -framerate $inputframerate -i g-%d.png -c:v libx264 -pix_fmt yuv420p -b:v 10000000 -vcodec mpeg4 -r ${FRAMERATE} opening-title.mov && \
     rm g-*.png;
 
+
 # Combine the two vidoes using ffmpeg.
 ffmpeg -f concat -i <(for f in $PWD/opening-title.mov $PWD/timelapse.mov; do echo "file '$f'"; done) -c copy opening-and-timelapse.mov && \
     rm opening-title.mov timelapse.mov;
 
+else
+
+# Combine this video on the last one since this is a CONTINUATION
+mv opening-and-timelapse.mov previous.mov;
+ffmpeg -f concat -i <(for f in $PWD/previous.mov $PWD/timelapse.mov; do echo "file '$f'"; done) -c copy opening-and-timelapse.mov && \
+    rm previous.mov timelapse.mov;
+
+fi
 
 
 fi
