@@ -11,7 +11,6 @@ OPENINGTITLE=4;
 FRAMERATE=12;
 FPS=12
 
-#TODO: how to do a continuation?
 REALTIME=1;
 TIMELAPSE=1;
 AUDIO=1;
