@@ -47,8 +47,8 @@ else
 START=`date +%s`;
 if test ! -n "$SGDIR"; then
 SGDIR=sg-${START};
-mkdir -p ${SGDIR};
 fi
+mkdir -p ${SGDIR};
 
 echo "Recording in ${SGDIR}";
 cd ${SGDIR};
