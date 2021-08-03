@@ -6,19 +6,20 @@
 #
 # First arg is the todo line number, Second is optional directory to use.  Will continue if there is an existing vid.
 
-TIMER=1;
+TIMER=25;
 OPENINGTITLE=1;
 FRAMERATE=12;
 FPS=12
 
-REALTIME=0;
+REALTIME=1;
 TIMELAPSE=1;
+CLEANUP_REALTIME=1;
 AUDIO=0;
 
 CONTINUATION=0;
 # If second arg then this is a continuation if there is an existing vid, otherwise use the directory if it exists
 SGDIR=$2;
-if test "$2" -a -d "$2" -a -f "$2/opening-and-timelapse.mov"; then
+if test "$2" -a -d "$2" -a -f "$2/opening-and-timelapse.mp4"; then
   CONTINUATION=1;
   echo "Continuing recording in: $2";
 fi
@@ -141,7 +142,8 @@ if test $REALTIME -eq 1; then
       REALTIME_I=$((${REALTIME_I}+1));
   done;
 
-  ffmpeg -t $((60 * $TIMER)) -f x11grab -framerate $FPS -i :0.0 -video_size $screensize realtime${REALTIME_I}.mp4 &
+  ffmpeg -t $((60 * $TIMER)) -f x11grab -video_size $screensize -framerate $FPS -i :0.0 -vcodec huffyuv realtime${REALTIME_I}.avi &
+
 fi
 
 if test $TIMELAPSE -eq 1; then
@@ -216,7 +218,7 @@ if test $TIMELAPSE -eq 1; then
   done;
 
   # Create a time lapse of the m-*.png with about 12 fps
-  ffmpeg -framerate ${FRAMERATE} -i m-%d.png -c:v libx264 -pix_fmt yuv420p -b:v 10000000 -vcodec mpeg4 -r ${FRAMERATE} timelapse.mov
+  ffmpeg -framerate ${FRAMERATE} -i m-%d.png -c:v libx264 -pix_fmt yuv420p -b:v 10000000 -vcodec mpeg4 -r ${FRAMERATE} timelapse.mp4
 
   rm m-*.png;
   rm -f diff.png;
@@ -270,7 +272,7 @@ if test $CONTINUATION -eq 0; then
       # Make it big ( use -scale as it's better for keeping the pixels crisp )
       # Also center it within the frame.
       # 1440x1080
-      mogrify -scale ${screensize} +repage ${frame};
+      mogrify -filter box -scale ${screensize} +repage ${frame};
       convert -size ${screensize} canvas:$BACKGROUND_COLOR \
           -gravity center $frame -compose Over -composite \
           f-${GS}.png;
@@ -293,21 +295,29 @@ if test $CONTINUATION -eq 0; then
       frame_index=$((${frame_index} - 1))
   done;
 
-  # Note that this is effectivley at a fast speed which should result in a short 5~ second opening title mov.
+  # Note that this is effectivley at a fast speed which should result in a short 5~ second opening title mp4.
   inputframerate=$((${SG}/5));
-  ffmpeg -framerate $inputframerate -i g-%d.png -c:v libx264 -pix_fmt yuv420p -b:v 10000000 -vcodec mpeg4 -r ${FRAMERATE} opening-title.mov && \
+  ffmpeg -framerate $inputframerate -i g-%d.png -c:v libx264 -pix_fmt yuv420p -b:v 10000000 -vcodec mpeg4 -r ${FRAMERATE} opening-title.mp4 && \
       rm g-*.png;
 
 
   # Combine the two vidoes using ffmpeg.
-  ffmpeg -f concat -safe 0 -i <(for f in $PWD/opening-title.mov $PWD/timelapse.mov; do echo "file '$f'"; done) -c copy opening-and-timelapse.mov && \
-      rm opening-title.mov timelapse.mov;
+  ffmpeg -f concat -safe 0 -i <(for f in $PWD/opening-title.mp4 $PWD/timelapse.mp4; do echo "file '$f'"; done) -c copy opening-and-timelapse.mp4 && \
+      rm opening-title.mp4 timelapse.mp4;
 
 else
 
   # Combine this video on the last one since this is a CONTINUATION
-  mv opening-and-timelapse.mov previous.mov;
-  ffmpeg -f concat -safe 0 -i <(for f in $PWD/previous.mov $PWD/timelapse.mov; do echo "file '$f'"; done) -c copy opening-and-timelapse.mov && \
-      rm previous.mov timelapse.mov;
+  mv opening-and-timelapse.mp4 previous.mp4;
+  ffmpeg -f concat -safe 0 -i <(for f in $PWD/previous.mp4 $PWD/timelapse.mp4; do echo "file '$f'"; done) -c copy opening-and-timelapse.mp4 && \
+      rm previous.mp4 timelapse.mp4;
 
+fi
+
+# Clean up the huge avi files after converting to mp4
+if test $REALTIME -eq 1 -a $CLEANUP_REALTIME -eq 1; then
+  for f in realtime*.avi; do
+    ffmpeg -i $f ${f%.avi}.mp4
+    rm $f
+  done
 fi
