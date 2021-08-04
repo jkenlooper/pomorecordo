@@ -1,20 +1,30 @@
 #!/bin/bash
 
 # PomoRecordo.sh
-# Record screen and audio for 25 min pomodoro and display-messages to tmux
-# Includes bonus opening-title creation
+# Record screen and audio for 25 min pomodoro and display-messages to tmux.
+# Includes bonus opening-title creation with both forward and backward.
 #
 # First arg is the todo line number, Second is optional directory to use.  Will continue if there is an existing vid.
 
-TIMER=25;
-OPENINGTITLE=1;
-FRAMERATE=12;
-FPS=12
+# Lazy way of setting options...
+# Minutes for the Pomodoro timer.
+TIMER=${TIMER-25};
 
-REALTIME=1;
-TIMELAPSE=1;
-CLEANUP_REALTIME=1;
-AUDIO=0;
+# 0 is off and 1 is on.
+OPENINGTITLE=${OPENINGTITLE-1}
+REALTIME=${REALTIME-1}
+TIMELAPSE=${TIMELAPSE-1}
+CLEANUP_REALTIME=${CLEANUP_REALTIME-1}
+AUDIO=${AUDIO-0}
+
+FRAMERATE=${FRAMERATE-12}
+FPS=${FPS-12}
+
+# Set this to the minium amount of time (seconds) between frames that are the same.
+IDLE=${IDLE-5}
+MAIN_IDLE=${MAIN_IDLE-1}
+
+BACKGROUND_COLOR=${BACKGROUND_COLOR-"#262626"}
 
 CONTINUATION=0;
 # If second arg then this is a continuation if there is an existing vid, otherwise use the directory if it exists
@@ -23,12 +33,6 @@ if test "$2" -a -d "$2" -a -f "$2/opening-and-timelapse.mp4"; then
   CONTINUATION=1;
   echo "Continuing recording in: $2";
 fi
-
-# set this to the minium amount of time (seconds) between frames that are the same.
-IDLE=5;
-MAIN_IDLE=1;
-
-BACKGROUND_COLOR="#262626"
 
 # Load the TASK variable with the todo text
 #TASK=`sed -n ''"$1"' L' $HOME/.todo/todo.txt`;
@@ -42,11 +46,11 @@ while test $COUNTDOWNTOSCGREENGRAB -gt -1; do
 done;
 
 if test $CANCELSCREENGRAB; then
-  echo 'canceled screen grab';
+  echo 'cancelled screen grab';
   exit 0
 fi
 
-# Make a new folder in the cwd if no SGDIR has been set
+# Make a new directory in the cwd if no SGDIR has been set
 START=`date +%s`;
 if test ! -n "$SGDIR"; then
   SGDIR=sg-${START};
@@ -70,7 +74,6 @@ if test $CONTINUATION -eq 0; then
   frameinterval=$(echo "scale=6; 1/12;" | bc);
   # Record the opening title
   SG=1
-  #fbgrab -d /dev/fb0 frame-${SG}.png 2> /dev/null &
   import -window root frame-${SG}.png
   now=$(date +%s)
   last_frame_date=$now
@@ -85,7 +88,6 @@ if test $CONTINUATION -eq 0; then
     previous_frame=frame-$(($SG - 1)).png
     frame=frame-${SG}.png
 
-    #fbgrab -d /dev/fb0 frame-${SG}.png 2> /dev/null
     import -window root frame-${SG}.png
 
     # Throw out this frame if it's the same as previous ( and adjust $findex )
@@ -106,7 +108,7 @@ if test $CONTINUATION -eq 0; then
 
     read -n 1 -t $timeout CANCELFBGRAB && break;
 
-    # Display time left to tmux session occasionaly
+    # Display time left to tmux session occasionally
     if test $(($now - $last_message_date)) -gt 1 && test $((($END - $now) % 60)) -eq 0 || \
         test $(($END - $now)) -lt 10 && test $(($END - $now)) -gt 5; then
         tmux display-message "$(($END - $now)) seconds left"
@@ -152,7 +154,6 @@ if test $TIMELAPSE -eq 1; then
   frameinterval=$(echo "scale=6; 1/12;" | bc);
   #MainScreenGrab ... not the Mono Sodium Glutamate...
   MSG=1
-  #fbgrab -d /dev/fb0 m-${MSG}.png 2> /dev/null &
   import -window root m-${MSG}.png
   now=$(date +%s)
   show_large_diff=$now
@@ -169,7 +170,6 @@ if test $TIMELAPSE -eq 1; then
     previous_frame=m-$(($MSG - 1)).png
     frame=m-${MSG}.png
 
-    #fbgrab -d /dev/fb0 m-${MSG}.png 2> /dev/null
     import -window root m-${MSG}.png
 
     # Throw out this frame if it's the same as previous ( and adjust $findex )
@@ -220,7 +220,7 @@ if test $TIMELAPSE -eq 1; then
   # Create a time lapse of the m-*.png with about 12 fps
   ffmpeg -framerate ${FRAMERATE} -i m-%d.png -c:v libx264 -pix_fmt yuv420p -b:v 10000000 -vcodec mpeg4 -r ${FRAMERATE} timelapse.mp4
 
-  rm m-*.png;
+  rm -f m-*.png;
   rm -f diff.png;
 fi
 
@@ -230,8 +230,8 @@ if test $END -ge $now; then
   echo "waiting every 5 seconds since timer not complete."
 fi
 while test $END -ge $now; do
-read -n 1 -t 5 -p "." && break
-now=$(date +%s)
+  read -n 1 -t 5 -p "." && break
+  now=$(date +%s)
 done;
 
 if test $AUDIO -eq 1; then
@@ -290,27 +290,28 @@ if test $CONTINUATION -eq 0; then
   frame_index=$SG;
   newframe_index=1;
   while test $frame_index -gt 0; do
-      mv f-${frame_index}.png g-${newframe_index}.png;
+      cp f-${frame_index}.png g-${newframe_index}.png;
       newframe_index=$((${newframe_index} + 1))
       frame_index=$((${frame_index} - 1))
   done;
 
   # Note that this is effectivley at a fast speed which should result in a short 5~ second opening title mp4.
   inputframerate=$((${SG}/5));
-  ffmpeg -framerate $inputframerate -i g-%d.png -c:v libx264 -pix_fmt yuv420p -b:v 10000000 -vcodec mpeg4 -r ${FRAMERATE} opening-title.mp4 && \
-      rm g-*.png;
+  ffmpeg -framerate $inputframerate -i g-%d.png -c:v libx264 -pix_fmt yuv420p -b:v 10000000 -vcodec mpeg4 -r ${FRAMERATE} opening-title--forward.mp4 \
+    && rm g-*.png;
+  ffmpeg -framerate $inputframerate -i f-%d.png -c:v libx264 -pix_fmt yuv420p -b:v 10000000 -vcodec mpeg4 -r ${FRAMERATE} opening-title--backward.mp4 \
+    && rm f-*.png;
 
-
-  # Combine the two vidoes using ffmpeg.
-  ffmpeg -f concat -safe 0 -i <(for f in $PWD/opening-title.mp4 $PWD/timelapse.mp4; do echo "file '$f'"; done) -c copy opening-and-timelapse.mp4 && \
-      rm opening-title.mp4 timelapse.mp4;
+  # Combine the two videos using ffmpeg.
+  ffmpeg -f concat -safe 0 -i <(for f in $PWD/opening-title--backward.mp4 $PWD/timelapse.mp4; do echo "file '$f'"; done) -c copy opening-and-timelapse.mp4 \
+    && rm opening-title--forward.mp4 opening-title--backward.mp4 timelapse.mp4;
 
 else
 
   # Combine this video on the last one since this is a CONTINUATION
   mv opening-and-timelapse.mp4 previous.mp4;
-  ffmpeg -f concat -safe 0 -i <(for f in $PWD/previous.mp4 $PWD/timelapse.mp4; do echo "file '$f'"; done) -c copy opening-and-timelapse.mp4 && \
-      rm previous.mp4 timelapse.mp4;
+  ffmpeg -f concat -safe 0 -i <(for f in $PWD/previous.mp4 $PWD/timelapse.mp4; do echo "file '$f'"; done) -c copy opening-and-timelapse.mp4 \
+    && rm previous.mp4 timelapse.mp4;
 
 fi
 
