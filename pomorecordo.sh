@@ -61,7 +61,7 @@ echo "Recording in ${SGDIR}";
 cd ${SGDIR};
 
 
-import -window root screensize-test.png
+import -silent -window root screensize-test.png
 screensize=$(identify -format %wx%h screensize-test.png)
 rm screensize-test.png
 
@@ -74,7 +74,7 @@ if test $CONTINUATION -eq 0; then
   frameinterval=$(echo "scale=6; 1/12;" | bc);
   # Record the opening title
   SG=1
-  import -window root frame-${SG}.png
+  import -silent -window root frame-${SG}.png
   now=$(date +%s)
   last_frame_date=$now
   last_message_date=$now
@@ -88,7 +88,7 @@ if test $CONTINUATION -eq 0; then
     previous_frame=frame-$(($SG - 1)).png
     frame=frame-${SG}.png
 
-    import -window root frame-${SG}.png
+    import -silent -window root frame-${SG}.png
 
     # Throw out this frame if it's the same as previous ( and adjust $findex )
     if test $(($now - $last_frame_date)) -lt $IDLE && test $(compare -metric AE ${previous_frame} ${frame} diff.png 2>&1) -eq 0; then
@@ -154,7 +154,7 @@ if test $TIMELAPSE -eq 1; then
   frameinterval=$(echo "scale=6; 1/12;" | bc);
   #MainScreenGrab ... not the Mono Sodium Glutamate...
   MSG=1
-  import -window root m-${MSG}.png
+  import -silent -window root m-${MSG}.png
   now=$(date +%s)
   show_large_diff=$now
   idle=$MAIN_IDLE
@@ -170,7 +170,7 @@ if test $TIMELAPSE -eq 1; then
     previous_frame=m-$(($MSG - 1)).png
     frame=m-${MSG}.png
 
-    import -window root m-${MSG}.png
+    import -silent -window root m-${MSG}.png
 
     # Throw out this frame if it's the same as previous ( and adjust $findex )
     if test $(($now - $last_frame_date)) -lt $MAIN_IDLE && \
@@ -222,6 +222,7 @@ if test $TIMELAPSE -eq 1; then
 
   rm -f m-*.png;
   rm -f diff.png;
+  rm -f diff
 fi
 
 # Stall while the REALTIME recording might still be going
@@ -253,8 +254,8 @@ if test $CONTINUATION -eq 0; then
       echo "building opening title ${frame} of ${SG}";
 
       # Crop out the left and bottom edges and then trim what's left
-      mogrify -crop +0-80 +repage -crop +30+0 +repage \
-          -trim +repage -bordercolor $BACKGROUND_COLOR -border 20x20 ${frame};
+      mogrify -crop +0-80 +repage -crop +40+0 +repage \
+          -trim +repage -bordercolor $BACKGROUND_COLOR -border 40x40 ${frame};
 
       frame_w=$(identify -format "%w" ${frame});
       frame_h=$(identify -format "%h" ${frame});
@@ -322,3 +323,4 @@ if test $REALTIME -eq 1 -a $CLEANUP_REALTIME -eq 1; then
     rm $f
   done
 fi
+
