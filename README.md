@@ -5,6 +5,13 @@ tmux.
 
 **Includes bonus opening-title creation.**
 
+Example video that I made (no audio):
+
+<iframe width="560" height="315"
+src="https://www.youtube-nocookie.com/embed/dGxVocBEi30" title="YouTube video
+player" frameborder="0" allow="accelerometer; autoplay; clipboard-write;
+encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+
 ## Why?
 
 This script started off as a few lines and then got more complex.
