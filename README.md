@@ -7,10 +7,8 @@ tmux.
 
 Example video that I made (no audio):
 
-<iframe width="560" height="315"
-src="https://www.youtube-nocookie.com/embed/dGxVocBEi30" title="YouTube video
-player" frameborder="0" allow="accelerometer; autoplay; clipboard-write;
-encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+[![Puzzle Massive - pomorecordo of infrastructure improvement](https://img.youtube.com/vi/dGxVocBEi30/0.jpg)](http://www.youtube.com/watch?v=dGxVocBEi30)
+
 
 ## Why?
 
