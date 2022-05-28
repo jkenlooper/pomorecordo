@@ -26,6 +26,8 @@ well. Or, maybe it is more successful then it was with that last temporary fix,
 but now it's a Tuesday.  Anyways, there is always room for more errors to keep
 things interesting.
 
+Warning. This is *not* a good example of well written shell script.
+
 ## Just use OBS
 
 Like I have stated earlier...this was originally a simple script that got messy

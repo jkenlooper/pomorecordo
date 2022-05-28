@@ -15,7 +15,7 @@ OPENINGTITLE=${OPENINGTITLE-1}
 REALTIME=${REALTIME-1}
 TIMELAPSE=${TIMELAPSE-1}
 CLEANUP_REALTIME=${CLEANUP_REALTIME-1}
-AUDIO=${AUDIO-0}
+AUDIO=${AUDIO-1}
 
 FRAMERATE=${FRAMERATE-12}
 FPS=${FPS-12}
@@ -91,7 +91,7 @@ if test $CONTINUATION -eq 0; then
     import -silent -window root frame-${SG}.png
 
     # Throw out this frame if it's the same as previous ( and adjust $findex )
-    if test $(($now - $last_frame_date)) -lt $IDLE && test $(compare -metric AE ${previous_frame} ${frame} diff.png 2>&1) -eq 0; then
+    if test $(($now - $last_frame_date)) -lt $IDLE && test "$(compare -metric AE ${previous_frame} ${frame} diff.png 2>&1)" -eq 0; then
         rm ${frame};
         SG=$(($SG - 1));
     else
@@ -116,6 +116,7 @@ if test $CONTINUATION -eq 0; then
         last_message_date=$now
     fi
   done;
+
 fi
 if test $CANCELFBGRAB; then
     echo screen grab canceled.
@@ -128,6 +129,7 @@ fi
 
 # Start audio recording and put it in the background
 if test $AUDIO -eq 1; then
+  # TODO: don't overwrite existing out.wav
   arecord -d $(($TIMER * 60)) -f dat out.wav &
   AUDIO_PID=$!
 fi
@@ -174,7 +176,7 @@ if test $TIMELAPSE -eq 1; then
 
     # Throw out this frame if it's the same as previous ( and adjust $findex )
     if test $(($now - $last_frame_date)) -lt $MAIN_IDLE && \
-        test $(compare -metric AE ${previous_frame} ${frame} -compose Src diff.png 2>&1 | tee diff) -eq 0; then
+        test "$(compare -metric AE ${previous_frame} ${frame} -compose Src diff.png 2>&1 | tee diff)" -eq 0; then
         # Only remove the frame if the skipframe flag is set.
         if test $show_large_diff -lt $now; then
             rm ${frame};
@@ -189,7 +191,7 @@ if test $TIMELAPSE -eq 1; then
         #last frame was different
         if test -f diff.png; then
             # check the diff.png for the size of the difference and set the skipframe flag
-            if test $(echo "$(convert diff.png -trim -format '%w * %h' info:)" | bc) -gt 248000; then
+            if test "$(echo "$(convert diff.png -trim -format '%w * %h' info:)" | bc)" -gt 248000; then
                 show_large_diff=$(($now+6))
                 rm diff.png;
             fi
@@ -319,7 +321,7 @@ fi
 # Clean up the huge avi files after converting to mp4
 if test $REALTIME -eq 1 -a $CLEANUP_REALTIME -eq 1; then
   for f in realtime*.avi; do
-    ffmpeg -i $f ${f%.avi}.mp4
+    ffmpeg -i $f -i out.wav -map 0:v -map 1:a ${f%.avi}.mp4
     rm $f
   done
 fi
