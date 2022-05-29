@@ -2,7 +2,7 @@
 
 # PomoRecordo.sh
 # Record screen and audio for 25 min pomodoro and display-messages to tmux.
-# Includes bonus opening-title creation with both forward and backward.
+# Includes bonus opening-title creation for time-lapse video with both forward and backward.
 #
 # First arg is the todo line number, Second is optional directory to use.  Will continue if there is an existing vid.
 
@@ -53,7 +53,7 @@ fi
 # Make a new directory in the cwd if no SGDIR has been set
 START=`date +%s`;
 if test ! -n "$SGDIR"; then
-  SGDIR=sg-${START};
+  SGDIR="$(date +sg-%F-%H_%M_%S)";
 fi
 mkdir -p ${SGDIR};
 
@@ -129,7 +129,6 @@ fi
 
 # Start audio recording and put it in the background
 if test $AUDIO -eq 1; then
-  # TODO: don't overwrite existing out.wav
   arecord -d $(($TIMER * 60)) -f dat out.wav &
   AUDIO_PID=$!
 fi
@@ -141,12 +140,8 @@ STOP=`date +%s`;
 END=`date -d "$TIMER minutes" +%s`
 # start recording the main session
 if test $REALTIME -eq 1; then
-  REALTIME_I=''
-  while test -f realtime${REALTIME_I}.mp4; do
-      REALTIME_I=$((${REALTIME_I}+1));
-  done;
 
-  ffmpeg -t $((60 * $TIMER)) -f x11grab -video_size $screensize -framerate $FPS -i :0.0 -vcodec huffyuv realtime${REALTIME_I}.avi &
+  ffmpeg -t $((60 * $TIMER)) -f x11grab -video_size $screensize -framerate $FPS -i :0.0 -vcodec huffyuv realtime.avi &
 
 fi
 
@@ -306,23 +301,30 @@ if test $CONTINUATION -eq 0; then
     && rm f-*.png;
 
   # Combine the two videos using ffmpeg.
-  ffmpeg -f concat -safe 0 -i <(for f in $PWD/opening-title--backward.mp4 $PWD/timelapse.mp4; do echo "file '$f'"; done) -c copy opening-and-timelapse.mp4 \
-    && rm opening-title--forward.mp4 opening-title--backward.mp4 timelapse.mp4;
+  ffmpeg -f concat -safe 0 -i <(for f in $PWD/opening-title--backward.mp4 $PWD/timelapse.mp4; do echo "file '$f'"; done) -c copy opening-and-timelapse.mp4
 
 else
 
   # Combine this video on the last one since this is a CONTINUATION
   mv opening-and-timelapse.mp4 previous.mp4;
-  ffmpeg -f concat -safe 0 -i <(for f in $PWD/previous.mp4 $PWD/timelapse.mp4; do echo "file '$f'"; done) -c copy opening-and-timelapse.mp4 \
-    && rm previous.mp4 timelapse.mp4;
+  ffmpeg -f concat -safe 0 -i <(for f in $PWD/previous.mp4 $PWD/timelapse.mp4; do echo "file '$f'"; done) -c copy opening-and-timelapse.mp4
 
 fi
 
 # Clean up the huge avi files after converting to mp4
 if test $REALTIME -eq 1 -a $CLEANUP_REALTIME -eq 1; then
-  for f in realtime*.avi; do
-    ffmpeg -i $f -i out.wav -map 0:v -map 1:a ${f%.avi}.mp4
-    rm $f
-  done
+  if [ -e realtime.mp4 ]; then
+    mv realtime.mp4 previous.mp4;
+  fi
+  ffmpeg -i realtime.avi -i out.wav -map 0:v -map 1:a realtime.mp4
+  rm realtime.avi
+
+  if test $CONTINUATION -ne 0; then
+    # Combine this video on the last one since this is a CONTINUATION
+    ffmpeg -f concat -safe 0 -i <(for f in $PWD/previous.mp4 $PWD/realtime.mp4; do echo "file '$f'"; done) -c copy continue-realtime.mp4
+    mv continue-realtime.mp4 realtime.mp4
+  fi
+
 fi
 
+rm -f opening-title--forward.mp4 opening-title--backward.mp4 timelapse.mp4 previous.mp4 out.wav
