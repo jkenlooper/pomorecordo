@@ -11,7 +11,7 @@
 TIMER=${TIMER-25};
 
 # 0 is off and 1 is on.
-OPENINGTITLE=${OPENINGTITLE-1}
+OPENING_TITLE_MINUTES=${OPENING_TITLE_MINUTES-1}
 REALTIME=${REALTIME-1}
 TIMELAPSE=${TIMELAPSE-1}
 CLEANUP_REALTIME=${CLEANUP_REALTIME-1}
@@ -67,7 +67,7 @@ rm screensize-test.png
 
 if test $CONTINUATION -eq 0; then
 
-  END=`date -d "${OPENINGTITLE} minutes" +%s`
+  END=`date -d "${OPENING_TITLE_MINUTES} minutes" +%s`
 
   FRAME_TIMESTAMP=$(date +%s.%N);
 
@@ -236,8 +236,7 @@ if test $AUDIO -eq 1; then
   kill $AUDIO_PID
 fi
 
-if test $CONTINUATION -eq 0; then
-
+convert_sg_frames_for_opening_title() {
   echo "Converting ${SG} frames for opening title";
 
 
@@ -302,6 +301,16 @@ if test $CONTINUATION -eq 0; then
 
   # Combine the two videos using ffmpeg.
   ffmpeg -f concat -safe 0 -i <(for f in $PWD/opening-title--backward.mp4 $PWD/timelapse.mp4; do echo "file '$f'"; done) -c copy opening-and-timelapse.mp4
+}
+
+if test $CONTINUATION -eq 0; then
+
+  if test $OPENING_TITLE_MINUTES -eq 0; then
+    # Fake that this even had an opening title.
+    mv timelapse.mp4 opening-and-timelapse.mp4
+  else
+    convert_sg_frames_for_opening_title
+  fi
 
 else
 
